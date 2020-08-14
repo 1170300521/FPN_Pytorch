@@ -10,9 +10,11 @@ import numpy as np
 import torchvision.utils as vutils
 from model.utils.config import cfg    # rm 'lib.', or cfg will be create a new copy
 from model.rpn.rpn_fpn import _RPN_FPN
-from model.roi_pooling.modules.roi_pool import _RoIPooling
-from model.roi_crop.modules.roi_crop import _RoICrop
-from model.roi_align.modules.roi_align import RoIAlignAvg
+#from model.roi_pooling.modules.roi_pool import _RoIPooling
+#from model.roi_crop.modules.roi_crop import _RoICrop
+#from model.roi_align.modules.roi_align import RoIAlignAvg
+from model.roi_layers import ROIAlign, ROIPool
+
 from model.rpn.proposal_target_layer import _ProposalTargetLayer
 from model.utils.net_utils import _smooth_l1_loss, _crop_pool_layer, _affine_grid_gen, _affine_theta
 import time
@@ -36,10 +38,10 @@ class _FPN(nn.Module):
 
         # NOTE: the original paper used pool_size = 7 for cls branch, and 14 for mask branch, to save the
         # computation time, we first use 14 as the pool_size, and then do stride=2 pooling for cls branch.
-        self.RCNN_roi_pool = _RoIPooling(cfg.POOLING_SIZE, cfg.POOLING_SIZE, 1.0/16.0)
-        self.RCNN_roi_align = RoIAlignAvg(cfg.POOLING_SIZE, cfg.POOLING_SIZE, 1.0/16.0)
-        self.grid_size = cfg.POOLING_SIZE * 2 if cfg.CROP_RESIZE_WITH_MAX_POOL else cfg.POOLING_SIZE
-        self.RCNN_roi_crop = _RoICrop()
+        self.RCNN_roi_pool = ROIPool((cfg.POOLING_SIZE, cfg.POOLING_SIZE), 1.0/16.0)
+        self.RCNN_roi_align = ROIAlign((cfg.POOLING_SIZE, cfg.POOLING_SIZE), 0)
+        #self.grid_size = cfg.POOLING_SIZE * 2 if cfg.CROP_RESIZE_WITH_MAX_POOL else cfg.POOLING_SIZE
+        #self.RCNN_roi_crop = _RoICrop()
 
     def _init_weights(self):
         def normal_init(m, mean, stddev, truncated=False):
@@ -116,28 +118,29 @@ class _FPN(nn.Module):
         roi_level[roi_level < 2] = 2
         roi_level[roi_level > 5] = 5
         # roi_level.fill_(5)
-        if cfg.POOLING_MODE == 'crop':
-            # pdb.set_trace()
-            # pooled_feat_anchor = _crop_pool_layer(base_feat, rois.view(-1, 5))
-            # NOTE: need to add pyrmaid
-            grid_xy = _affine_grid_gen(rois, feat_maps.size()[2:], self.grid_size)  ##
-            grid_yx = torch.stack([grid_xy.data[:,:,:,1], grid_xy.data[:,:,:,0]], 3).contiguous()
-            roi_pool_feat = self.RCNN_roi_crop(feat_maps, Variable(grid_yx).detach()) ##
-            if cfg.CROP_RESIZE_WITH_MAX_POOL:
-                roi_pool_feat = F.max_pool2d(roi_pool_feat, 2, 2)
+#        if cfg.POOLING_MODE == 'crop':
+#            # pdb.set_trace()
+#            # pooled_feat_anchor = _crop_pool_layer(base_feat, rois.view(-1, 5))
+#            # NOTE: need to add pyrmaid
+#            grid_xy = _affine_grid_gen(rois, feat_maps.size()[2:], self.grid_size)  ##
+#            grid_yx = torch.stack([grid_xy.data[:,:,:,1], grid_xy.data[:,:,:,0]], 3).contiguous()
+#            roi_pool_feat = self.RCNN_roi_crop(feat_maps, Variable(grid_yx).detach()) ##
+#            if cfg.CROP_RESIZE_WITH_MAX_POOL:
+#                roi_pool_feat = F.max_pool2d(roi_pool_feat, 2, 2)
 
-        elif cfg.POOLING_MODE == 'align':
+        if cfg.POOLING_MODE == 'align':
             roi_pool_feats = []
             box_to_levels = []
             for i, l in enumerate(range(2, 6)):
                 if (roi_level == l).sum() == 0:
                     continue
-                idx_l = (roi_level == l).nonzero().squeeze()
+                idx_l = (roi_level == l).nonzero().squeeze().view(-1)
                 box_to_levels.append(idx_l)
                 scale = feat_maps[i].size(2) / im_info[0][0]
                 feat = self.RCNN_roi_align(feat_maps[i], rois[idx_l], scale)
                 roi_pool_feats.append(feat)
             roi_pool_feat = torch.cat(roi_pool_feats, 0)
+            #print(box_to_levels)
             box_to_level = torch.cat(box_to_levels, 0)
             idx_sorted, order = torch.sort(box_to_level)
             roi_pool_feat = roi_pool_feat[order]
@@ -148,7 +151,7 @@ class _FPN(nn.Module):
             for i, l in enumerate(range(2, 6)):
                 if (roi_level == l).sum() == 0:
                     continue
-                idx_l = (roi_level == l).nonzero().squeeze()
+                idx_l = (roi_level == l).nonzero().squeeze().view(-1)
                 box_to_levels.append(idx_l)
                 scale = feat_maps[i].size(2) / im_info[0][0]
                 feat = self.RCNN_roi_pool(feat_maps[i], rois[idx_l], scale)
@@ -187,9 +190,10 @@ class _FPN(nn.Module):
 
         rpn_feature_maps = [p2, p3, p4, p5, p6]
         mrcnn_feature_maps = [p2, p3, p4, p5]
-
+        
+        #print(rpn_feature_maps, im_info, gt_boxes, num_boxes)
         rois, rpn_loss_cls, rpn_loss_bbox = self.RCNN_rpn(rpn_feature_maps, im_info, gt_boxes, num_boxes)
-
+        #print(rpn_loss_bbox)
         # if it is training phrase, then use ground trubut bboxes for refining
         if self.training:
             roi_data = self.RCNN_proposal_target(rois, gt_boxes, num_boxes)
@@ -264,6 +268,9 @@ class _FPN(nn.Module):
             # loss (cross entropy) for object classification
             RCNN_loss_cls = F.cross_entropy(cls_score, rois_label)
             # loss (l1-norm) for bounding box regression
+            #print(bbox_pred)
+            #print(rois_target)
+            #print(rois_inside_ws, rois_outside_ws)
             RCNN_loss_bbox = _smooth_l1_loss(bbox_pred, rois_target, rois_inside_ws, rois_outside_ws)
 
         rois = rois.view(batch_size, -1, rois.size(1))

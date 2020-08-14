@@ -215,22 +215,30 @@ def resnet152(pretrained=False):
     model.load_state_dict(model_zoo.load_url(model_urls['resnet152']))
   return model
 
+model_dict={
+        18: resnet18,
+        34: resnet34,
+        50: resnet50,
+        101: resnet101,
+        152: resnet152
+}
+
 class resnet(_FPN):
   def __init__(self, classes, num_layers=101, pretrained=False, class_agnostic=False):
-    self.model_path = 'data/pretrained_model/resnet101_caffe.pth'
+    #self.model_path = 'data/pretrained_model/resnet101_caffe.pth'
     self.dout_base_model = 256
     self.pretrained = pretrained
     self.class_agnostic = class_agnostic
-
+    self.num_layers = num_layers
     _FPN.__init__(self, classes, class_agnostic)
 
   def _init_modules(self):
-    resnet = resnet101()
+    resnet = model_dict[self.num_layers](pretrained=self.pretrained)
 
-    if self.pretrained == True:
-      print("Loading pretrained weights from %s" %(self.model_path))
-      state_dict = torch.load(self.model_path)
-      resnet.load_state_dict({k:v for k,v in state_dict.items() if k in resnet.state_dict()})
+#    if self.pretrained == True:
+#      print("Loading pretrained weights from %s" %(self.model_path))
+#      state_dict = torch.load(self.model_path)
+#      resnet.load_state_dict({k:v for k,v in state_dict.items() if k in resnet.state_dict()})
 
     self.RCNN_layer0 = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool)
     self.RCNN_layer1 = nn.Sequential(resnet.layer1)

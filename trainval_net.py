@@ -353,28 +353,37 @@ if __name__ == '__main__':
         data_iter = iter(dataloader)
 
         for step in range(iters_per_epoch):
-            data = data_iter.next()
-            im_data.data.resize_(data[0].size()).copy_(data[0])
-            im_info.data.resize_(data[1].size()).copy_(data[1])
-            gt_boxes.data.resize_(data[2].size()).copy_(data[2])
-            num_boxes.data.resize_(data[3].size()).copy_(data[3])
+            try:
+                data = data_iter.next()
+            except:
+                # NOTE: maybe cluster's err
+                print("File not found!")
+                continue
+
+            with torch.no_grad():
+                im_data.resize_(data[0].size()).copy_(data[0])
+                im_info.resize_(data[1].size()).copy_(data[1])
+                gt_boxes.resize_(data[2].size()).copy_(data[2])
+                num_boxes.resize_(data[3].size()).copy_(data[3])
 
             FPN.zero_grad()
-            # try:
-            _, _, _, rpn_loss_cls, rpn_loss_box, \
-            RCNN_loss_cls, RCNN_loss_bbox, \
-            roi_labels = FPN(im_data, im_info, gt_boxes, num_boxes)
-            # except:
+            try:
+                _, _, _, rpn_loss_cls, rpn_loss_box, \
+                RCNN_loss_cls, RCNN_loss_bbox, \
+                roi_labels = FPN(im_data, im_info, gt_boxes, num_boxes)
+            except RuntimeError as err:
+                print(err)
+                continue
             #     print(data[4], gt_boxes, num_boxes)
             #     img = (data[0].permute(0, 2, 3, 1)[0].numpy() + cfg.PIXEL_MEANS).astype(np.uint8).copy()
             #
             #     bbox = data[2][0].cpu().numpy()
             #     im2show = vis_detections(img, 'anything', bbox, 0.0)
             #     print(bbox)
-
+            #print(rpn_loss_box)
             loss = rpn_loss_cls.mean() + rpn_loss_box.mean() \
                    + RCNN_loss_cls.mean() + RCNN_loss_bbox.mean()
-            loss_temp += loss.data[0]
+            loss_temp += loss.item()
 
             # backward
             optimizer.zero_grad()
@@ -387,17 +396,17 @@ if __name__ == '__main__':
                     loss_temp /= args.disp_interval
 
                 if args.mGPUs:
-                    loss_rpn_cls = rpn_loss_cls.mean().data[0]
-                    loss_rpn_box = rpn_loss_box.mean().data[0]
-                    loss_rcnn_cls = RCNN_loss_cls.mean().data[0]
-                    loss_rcnn_box = RCNN_loss_bbox.mean().data[0]
+                    loss_rpn_cls = rpn_loss_cls.mean().item()
+                    loss_rpn_box = rpn_loss_box.mean().item()
+                    loss_rcnn_cls = RCNN_loss_cls.mean().item()
+                    loss_rcnn_box = RCNN_loss_bbox.mean().item()
                     fg_cnt = torch.sum(roi_labels.data.ne(0))
                     bg_cnt = roi_labels.data.numel() - fg_cnt
                 else:
-                    loss_rpn_cls = rpn_loss_cls.data[0]
-                    loss_rpn_box = rpn_loss_box.data[0]
-                    loss_rcnn_cls = RCNN_loss_cls.data[0]
-                    loss_rcnn_box = RCNN_loss_bbox.data[0]
+                    loss_rpn_cls = rpn_loss_cls.item()
+                    loss_rpn_box = rpn_loss_box.item()
+                    loss_rcnn_cls = RCNN_loss_cls.item()
+                    loss_rcnn_box = RCNN_loss_bbox.item()
                     fg_cnt = torch.sum(roi_labels.data.ne(0))
                     bg_cnt = roi_labels.data.numel() - fg_cnt
 

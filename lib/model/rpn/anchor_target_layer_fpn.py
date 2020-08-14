@@ -137,17 +137,23 @@ class _AnchorTargetLayer_FPN(nn.Module):
         bbox_inside_weights[labels==1] = cfg.TRAIN.RPN_BBOX_INSIDE_WEIGHTS[0]
 
         if cfg.TRAIN.RPN_POSITIVE_WEIGHT < 0:
-            num_examples = torch.sum(labels[i] >= 0)
+            num_examples = torch.sum(labels[i] >= 0).float()
             positive_weights = 1.0 / num_examples
             negative_weights = 1.0 / num_examples
+            #print(positive_weights)
         else:
             assert ((cfg.TRAIN.RPN_POSITIVE_WEIGHT > 0) &
                     (cfg.TRAIN.RPN_POSITIVE_WEIGHT < 1))
-
+        
+        #print(num_examples)
+        #print(labels)
+        #print(positive_weights)
+        #print(negative_weights)
         bbox_outside_weights[labels == 1] = positive_weights
         bbox_outside_weights[labels == 0] = negative_weights
 
         labels = _unmap(labels, total_anchors, inds_inside, batch_size, fill=-1)
+        
         bbox_targets = _unmap(bbox_targets, total_anchors, inds_inside, batch_size, fill=0)
         bbox_inside_weights = _unmap(bbox_inside_weights, total_anchors, inds_inside, batch_size, fill=0)
         bbox_outside_weights = _unmap(bbox_outside_weights, total_anchors, inds_inside, batch_size, fill=0)

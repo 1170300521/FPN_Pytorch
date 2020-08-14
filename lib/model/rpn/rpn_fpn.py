@@ -98,16 +98,16 @@ class _RPN_FPN(nn.Module):
 
         rois = self.RPN_proposal((rpn_cls_prob_alls.data, rpn_bbox_pred_alls.data,
                                  im_info, cfg_key, rpn_shapes))
-
+        #print("rois", rois)
         self.rpn_loss_cls = 0
         self.rpn_loss_box = 0
 
         # generating training labels and build the rpn loss
         if self.training:
             assert gt_boxes is not None
-
+            #print(rpn_cls_score_alls.data, gt_boxes, im_info, num_boxes, rpn_shapes)
             rpn_data = self.RPN_anchor_target((rpn_cls_score_alls.data, gt_boxes, im_info, num_boxes, rpn_shapes))
-
+            #print(rpn_data)
             # compute classification loss
             rpn_label = rpn_data[0].view(batch_size, -1)
             rpn_keep = Variable(rpn_label.view(-1).ne(-1).nonzero().view(-1))
@@ -125,7 +125,7 @@ class _RPN_FPN(nn.Module):
             rpn_bbox_outside_weights = Variable(rpn_bbox_outside_weights.unsqueeze(2) \
                     .expand(batch_size, rpn_bbox_outside_weights.size(1), 4))
             rpn_bbox_targets = Variable(rpn_bbox_targets)
-            
+            #print(rpn_bbox_pred_alls, rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights)
             self.rpn_loss_box = _smooth_l1_loss(rpn_bbox_pred_alls, rpn_bbox_targets, rpn_bbox_inside_weights, 
                             rpn_bbox_outside_weights, sigma=3)
 

@@ -1,7 +1,7 @@
 import os
 import torch
-from torch.utils.ffi import create_extension
-
+#from torch.utils.ffi import create_extension
+from ffi_ext import create_extension
 #this_file = os.path.dirname(__file__)
 
 sources = []
@@ -29,7 +29,8 @@ ffi = create_extension(
     define_macros=defines,
     relative_to=__file__,
     with_cuda=with_cuda,
-    extra_objects=extra_objects
+    extra_objects=extra_objects,
+    include_dirs=["/root/anaconda3/pkgs/pytorch-1.1.0-py3.7_cuda10.0.130_cudnn7.5.1_0/lib/python3.7/site-packages/torch/include"]
 )
 
 if __name__ == '__main__':
